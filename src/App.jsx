@@ -6,7 +6,7 @@ import { Sparkles, Heart, Briefcase, Shield, Zap, Calendar, Camera, Share2, Chev
  */
 
 // --- API Service Configuration ---
-const apiKey = import.meta.env.VITE_API_KEY; // 로컬/Vercel 사용 시 이 줄을 활성화
+const apiKey = import.meta.env.VITE_API_KEY;
 
 
 // --- Utility Functions ---
@@ -311,7 +311,7 @@ const LoadingScreen = ({ message }) => (
     <p className="text-pink-600 font-bold text-xl text-center font-mono bg-white border-2 border-black p-2 rounded-xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
       {message}
     </p>
-    <p className="text-sm text-gray-500 font-mono">약 5~10초 정도 걸려요!</p>
+    <p className="text-sm text-gray-500 font-mono">약 10~15초 정도 걸려요!</p>
   </div>
 );
 
@@ -360,28 +360,34 @@ const SlotMachine = ({ numbers, initial }) => {
 
     const [isSpinning, setIsSpinning] = useState(false);
     const [displayNumbers, setDisplayNumbers] = useState(Array(6).fill("?"));
-    const [displayInitial, setDisplayInitial] = useState(["?", "?"]);
+    // 초기에는 '?'로 설정
+    const [displayInitial, setDisplayInitial] = useState(['?', '?']);
 
     // 초성 리스트를 두 글자 조합에 맞게 확장
     const initialList = ["ㄱ", "ㄴ", "ㄷ", "ㄹ", "ㅁ", "ㅂ", "ㅅ", "ㅇ", "ㅈ", "ㅊ", "ㅋ", "ㅌ", "ㅍ", "ㅎ"];
     const getRandomInitial = () => initialList[Math.floor(Math.random() * initialList.length)];
     
     useEffect(() => {
-        // 컴포넌트 마운트 시 초기값 설정 (두 글자)
-        setDisplayInitial(safeInitial.split('').slice(0, 2));
-    }, [safeInitial]);
+        // 컴포넌트 마운트 시 초성 필드는 '?'로 유지
+        setDisplayInitial(['?', '?']);
+    }, []);
 
     const handleSpin = () => {
         setIsSpinning(true);
         let counter = 0;
+        const finalInitial = safeInitial.split('').slice(0, 2);
+        
         const interval = setInterval(() => {
             setDisplayNumbers(displayNumbers.map(() => Math.floor(Math.random() * 45) + 1));
+            // 스핀 중에는 랜덤 초성 표시
             setDisplayInitial([getRandomInitial(), getRandomInitial()]);
             counter++;
+            
             if (counter > 15) {
                 clearInterval(interval);
                 setDisplayNumbers(safeNumbers);
-                setDisplayInitial(safeInitial.split('').slice(0, 2));
+                // 스핀 종료 시 최종 초성 표시
+                setDisplayInitial(finalInitial); 
                 setIsSpinning(false);
             }
         }, 100);
@@ -393,7 +399,7 @@ const SlotMachine = ({ numbers, initial }) => {
             <div className="flex justify-center gap-2 mb-4">
                 {displayNumbers.map((num, idx) => (
                     <div key={idx} className="w-10 h-10 bg-white border-2 border-black rounded-full flex items-center justify-center font-mono font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
-                        {num}
+                        {num === '?' ? num : String(num).padStart(2, '0')}
                     </div>
                 ))}
             </div>
