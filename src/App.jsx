@@ -5,18 +5,27 @@ import { Sparkles, Heart, Briefcase, Shield, Zap, Calendar, Camera, Share2, Chev
  * 2026 럭키 유니버스 (Lucky Universe 2026) - Hanyang Univ. Project Ver.
  */
 
-// --- API Service Configuration ---
-const apiKey = import.meta.env.VITE_API_KEY; 
+// --- API Service Configuration (Multi-Key Load Balancing) ---
+const API_KEY_POOL = [
+  import.meta.env.VITE_API_KEY_1,
+  import.meta.env.VITE_API_KEY, // 기본 키(백업용)
+].filter(key => key); // 비어있는 키는 자동으로 제외
+
+// 랜덤 키 선택 함수
+const getApiKey = () => {
+  if (API_KEY_POOL.length === 0) return "";
+  return API_KEY_POOL[Math.floor(Math.random() * API_KEY_POOL.length)];
+};
 
 // --- Utility Functions ---
 
-// 마크다운 제거 함수 (채팅 메시지 정리용)
+// 마크다운 제거 함수
 const cleanMarkdown = (text) => {
     if (!text) return "";
     return text.replace(/\*\*/g, "").replace(/\*/g, "").replace(/`/g, "");
 };
 
-// 운세 결과 카드 이미지 생성 함수 (공유하기용)
+// 운세 결과 카드 이미지 생성 함수
 async function generateFortuneCardImage(fortuneData) {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
@@ -47,11 +56,10 @@ async function generateFortuneCardImage(fortuneData) {
     ctx.fillText('🔮', 150, 100);
     ctx.fillText('🍀', 650, 100);
 
-    // 요약 텍스트 (줄바꿈 처리)
+    // 요약 텍스트
     ctx.font = 'bold 40px "Malgun Gothic", sans-serif';
     ctx.fillStyle = '#DB2777'; // 핑크색
     
-    // 텍스트 줄바꿈 로직
     const words = fortuneData.summary.split(' ');
     let line = '';
     let y = 250;
@@ -86,7 +94,7 @@ async function generateFortuneCardImage(fortuneData) {
     return new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
 }
 
-// SVG Data URL을 PNG Blob으로 변환하는 함수 (이미지 저장 오류 해결)
+// SVG Data URL을 PNG Blob으로 변환
 function svgDataURLToPngBlob(svgDataUrl) {
     return new Promise((resolve, reject) => {
         const img = new Image();
@@ -98,9 +106,8 @@ function svgDataURLToPngBlob(svgDataUrl) {
             canvas.height = 1024;
             
             const ctx = canvas.getContext('2d');
-            ctx.fillStyle = '#FFFFFF';
+            ctx.fillStyle = '#FFFFFF'; // 투명 배경 방지
             ctx.fillRect(0, 0, canvas.width, canvas.height);
-            
             ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
             canvas.toBlob((blob) => {
@@ -160,19 +167,20 @@ const normalizeFortuneData = (data) => {
 // --- API Calls ---
 
 async function generateFullFortune(userData) {
-  // 로컬 환경에서 키 설정 오류 시 즉시 피드백 제공
-  if (!apiKey || apiKey === 'undefined') {
-      // 미리보기 환경에서는 무시, 로컬에서는 경고
-      if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
-          alert("API 키가 설정되지 않았습니다! '.env' 파일과 'App.jsx' 상단 설정을 확인해주세요. (Local)");
-          return null;
-      }
+  if (API_KEY_POOL.length === 0) {
+     // 로컬에서 키가 아예 없으면 경고
+     if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+        alert("🚨 API 키가 설정되지 않았습니다!\n.env 파일에 VITE_API_KEY_1, VITE_API_KEY_2 등을 설정해주세요.\nApp.jsx 상단의 주석도 확인해주세요.");
+     }
+     return null;
   }
 
   const MAX_RETRIES = 3;
   let delay = 1000;
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    const currentKey = getApiKey(); // 시도할 때마다 랜덤 키 뽑기 (로드 밸런싱)
+    
     const prompt = `
     역할: 30년 경력의 명리학자이자 MZ세대 멘토인 AI 점술가.
     임무: 2026년(병오년, 적토마의 해) 종합 운세, '오늘'의 운세, '오늘'의 연애운 분석.
@@ -201,10 +209,22 @@ async function generateFullFortune(userData) {
        - hiddenSkill: 숨겨진 재능 1가지.
     7. [빌런 탐지기] villain: 2026년에 조심해야 할 사람 특징.
     8. [대박 캘린더] luckyDates: 2026년 중 가장 운이 좋은 날짜 3개.
-    `;
+
+    JSON Output Schema Example:
+    {
+      "summary": "...",
+      "hashtags": ["...", "...", "..."],
+      "details": { "wealth": "...", "love": "...", "career": "...", "health": "..." },
+      "daily": { "todaySummary": "...", "score": 90, "mission": "...", "lotto": [1, 2, 3, 4, 5, 6], "initial": "ㅅㅎ" },
+      "loveMatch": { "charmScore": 85, "bestMbti": "ENFP", "advice": "..." },
+      "careerWealth": { "jobs": ["...", "...", "..."], "workStyle": "...", "salary": "...", "hiddenSkill": "..." },
+      "villain": "...",
+      "luckyDates": ["3월 5일", "7월 20일", "11월 11일"]
+    }
+  `;
 
     try {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${currentKey}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
@@ -214,7 +234,7 @@ async function generateFullFortune(userData) {
       });
 
       if (response.status === 429) {
-          console.warn(`Rate limit hit. Retrying in ${delay}ms...`);
+          console.warn(`Rate limit hit (Key: ...${currentKey.slice(-4)}). Retrying...`);
           await new Promise(resolve => setTimeout(resolve, delay));
           delay *= 2;
           continue; 
@@ -232,10 +252,11 @@ async function generateFullFortune(userData) {
         delay *= 2;
     }
   }
-  alert("앗! 지금 AI 점술가를 찾는 분들이 너무 많아요! 🤯\n잠시 뒤에 다시 시도해 주시면 금방 봐드릴게요! 🍀");
+  alert("앗! 지금 사용자가 너무 많아서 AI 점술가가 조금 바빠요! 🤯\n잠시 뒤에 다시 시도해 주시면 금방 봐드릴게요! 🍀");
   return null;
 }
 
+// [무료 모드] 8비트 픽셀 아트(도트) 생성 함수 (SVG)
 async function generateCutePixelArtSVG(description) {
     const svgPrompt = `
       Role: Expert Pixel Artist.
@@ -243,12 +264,10 @@ async function generateCutePixelArtSVG(description) {
       
       IMPORTANT INSTRUCTIONS:
       1. Use ONLY <rect> elements to create a pixel art look. Do NOT use <path>, <circle>, or <ellipse>.
-      2. The art should look like a retro game sprite (e.g., Pokemon, Tamagotchi style).
-      3. Grid size: roughly 24x24 or 32x32 pixels.
-      4. Colors: Vibrant pastel colors + Black outline for contrast.
-      5. Background: Transparent or simple solid color.
-      6. ViewBox: "0 0 512 512" (scale up the pixels).
-      7. Return ONLY the raw <svg> string. No markdown. No explanations.
+      2. The art should look like a retro game sprite (Pokemon/Tamagotchi), 24x24 or 32x32 grid.
+      3. Colors: Vibrant pastel colors + Black outline for contrast.
+      4. ViewBox: "0 0 512 512" (scale up the pixels).
+      5. Return ONLY the raw <svg> string. No markdown. No explanations.
     `;
 
     const MAX_RETRIES = 3;
@@ -256,7 +275,8 @@ async function generateCutePixelArtSVG(description) {
 
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
         try {
-            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+            const currentKey = getApiKey(); // 이미지 생성 시에도 랜덤 키 사용
+            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${currentKey}`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ contents: [{ parts: [{ text: svgPrompt }] }] })
@@ -265,7 +285,7 @@ async function generateCutePixelArtSVG(description) {
             if (response.status === 429) {
                 await new Promise(resolve => setTimeout(resolve, delay));
                 delay *= 2;
-                continue;
+                continue; 
             }
 
             if (!response.ok) throw new Error("SVG Gen Failed");
@@ -276,8 +296,7 @@ async function generateCutePixelArtSVG(description) {
             if (svgMatch) svgCode = svgMatch[0];
             else svgCode = svgCode.replace(/```xml|```svg|```/g, "").trim();
 
-            // SVG 코드 유효성 검사
-            if (!svgCode.startsWith('<svg')) throw new Error("Invalid SVG");
+            if (!svgCode.startsWith('<svg')) throw new Error("Invalid SVG Code");
 
             const base64Svg = btoa(unescape(encodeURIComponent(svgCode)));
             return `data:image/svg+xml;base64,${base64Svg}`;
@@ -292,22 +311,23 @@ async function generateCutePixelArtSVG(description) {
 }
 
 async function generateLuckyIconImage(wish, userData) {
-  if (!apiKey || apiKey === 'undefined') {
+  if (API_KEY_POOL.length === 0) {
       if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
-          alert("API 키가 설정되지 않았습니다! .env 파일을 확인해주세요.");
+          alert("API 키 설정을 확인해주세요.");
       }
       return null;
   }
   
   try {
     const designPrompt = `
-      Analyze the user's MBTI (${userData.mbti}) and Wish ("${wish}").
-      Select a CUTE ANIMAL based on MBTI (e.g., ENTJ=Lion, INFP=Bunny).
-      Describe a scene where this [Cute Animal] is holding an object related to "${wish}".
+      Analyze MBTI: ${userData.mbti}, Wish: "${wish}".
+      Select a CUTE ANIMAL (e.g., Rabbit, Bear, Cat).
+      Describe it holding an object related to the wish.
       Output format: "A [Adjective] [Animal] [Action]"
     `;
 
-    const designResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+    const currentKey = getApiKey();
+    const designResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${currentKey}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ contents: [{ parts: [{ text: designPrompt }] }] })
@@ -326,25 +346,21 @@ async function generateLuckyIconImage(wish, userData) {
 
   } catch (error) {
     console.error("Icon Gen Error:", error);
-    alert("앗! AI 화가님이 지금 너무 바쁜가 봐요! 🎨💦\n잠시 뒤에 다시 부탁해볼까요?");
+    alert("앗! AI 화가님이 바쁜가 봐요! 🎨💦\n잠시 뒤에 다시 부탁해볼까요?");
     return null;
   }
 }
 
-// Gemini Chat Function (Clean Markdown)
+// Gemini Chat Function
 async function generateChatResponse(history, userData, fortuneSummary) {
-  if (!apiKey) return "API 키 오류입니다.";
+  const currentKey = getApiKey();
+  if (!currentKey) return "API 키 오류입니다.";
 
   const systemPrompt = `
-    You are the user's 'Lucky Tamagotchi' (a cute guardian spirit for 2026).
-    User Info: MBTI=${userData.mbti}, 2026 Fortune="${fortuneSummary}".
-    
-    Persona:
-    - Cute, supportive, and slightly mystical.
-    - Speak in Korean (informal/banmal, like a close friend).
-    - Use emojis often (🍀, 🔮, ✨).
-    - Keep responses short (1-2 sentences) and witty.
-    - Do NOT use Markdown bold (**text**) or other formatting. Just plain text and emojis.
+    You are 'Lucky Tamagotchi'.
+    Info: MBTI=${userData.mbti}, Fortune="${fortuneSummary}".
+    Persona: Cute, informal Korean(Banmal), lots of emojis.
+    No Markdown formatting (bold, italic).
   `;
 
   const messages = [
@@ -356,7 +372,7 @@ async function generateChatResponse(history, userData, fortuneSummary) {
   ];
 
   try {
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${currentKey}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ contents: messages })
@@ -367,8 +383,7 @@ async function generateChatResponse(history, userData, fortuneSummary) {
     let responseText = data.candidates[0].content.parts[0].text;
     return cleanMarkdown(responseText);
   } catch (error) {
-    console.error("Chat Error:", error);
-    return "지금은 통신이 좀 어렵네.. 잠시 후에 다시 말걸어줘! 📡";
+    return "통신이 불안정해! 다시 말해줄래? 📡";
   }
 }
 
@@ -664,8 +679,7 @@ const ResultView = ({ fortuneData, setView, onTalismanStart }) => {
         <div className="space-y-5 font-mono">
              <div className="bg-white p-4 rounded-xl border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
                 <h4 className="font-bold text-blue-900 mb-2 flex items-center gap-2"><Star className="w-4 h-4"/> 2026년 예상 수입 (재미로!)</h4>
-                {/* [수정됨] 예상 수입 텍스트 스타일 개선 */}
-                <p className="text-lg font-bold text-blue-800 leading-relaxed break-keep text-left">
+                <p className="text-lg font-bold text-blue-800 leading-relaxed break-keep text-left mt-2">
                     {fortuneData.careerWealth?.salary || "측정 불가"}
                 </p>
             </div>
@@ -928,12 +942,9 @@ export default function App() {
     const imageUrl = await generateLuckyIconImage(talismanWish, userData);
     
     if (imageUrl) {
-        const img = new Image();
-        img.src = imageUrl;
-        img.onload = () => {
-            setTalismanImage(imageUrl);
-            setView('talismanResult');
-        };
+        // SVG 로딩 대기 (깜빡임 방지)
+        setTalismanImage(imageUrl);
+        setView('talismanResult');
     } else {
         setView('talismanInput');
     }
