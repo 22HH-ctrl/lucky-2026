@@ -135,7 +135,8 @@ AI Pixel Companion입니다.
 
 
 ### 럭키 다마고치 생성 화면  
-<img width="681" height="717" alt="image" src="https://github.com/user-attachments/assets/791545f0-9bdd-4b1c-8f12-799ed405e3aa" />
+<img width="516" height="560" alt="image" src="https://github.com/user-attachments/assets/336bada2-16bb-40eb-8951-8b9e67c04906" />
+
 
 ---
 
